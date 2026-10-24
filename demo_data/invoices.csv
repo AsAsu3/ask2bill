@@ -1,0 +1,4 @@
+受付番号,受付日時,顧客名,連絡先,サービス,優先度,見積金額,請求番号,PayPal注文ID,支払いリンク,ステータス,支払完了日時
+INQ-20261024-0001,2026-10-24T16:32:25+09:00,山田 花子,yamada@example.com,ウェブサイト制作,通常,150000,MOCK-INV2-0001,MOCK-ORDER-0001,https://www.sandbox.paypal.com/invoice/p/#MOCK-INV2-0001 (MOCK),PAID,2026-10-24T16:32:25+09:00
+INQ-20261024-0002,2026-10-24T16:32:25+09:00,佐藤 健,sato@example.com,保守プラン,通常,30000,,,,REJECTED_BY_OWNER,
+INQ-20261024-0003,2026-10-24T16:32:25+09:00,鈴木 美咲,suzuki@example.com,データ分析レポート,高,50000,MOCK-INV2-0002,,https://www.sandbox.paypal.com/invoice/p/#MOCK-INV2-0002 (MOCK),REMINDED,
