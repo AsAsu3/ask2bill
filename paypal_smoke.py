@@ -155,6 +155,8 @@ def _stage1(args) -> int:
         got = adapter.get_invoice(invoice["id"])
         print(f"[OK] Invoicing get: id={got.get('id')} status={got.get('status')} "
               f"payment_link 有無: {'yes' if got.get('payment_link') else 'no'}")
+        print(f"[diag] invoice keys: {got.get('_top_keys')} / "
+              f"links rels: {got.get('_link_rels')}")
 
     try:
         _invoice_flow()

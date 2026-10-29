@@ -244,8 +244,12 @@ class SandboxPayPalAdapter(PayPalAdapter):
     def get_invoice(self, invoice_id):
         invoice = self._invoice_request(
             "GET", f"/v2/invoicing/invoices/{invoice_id}")
-        # 本体が使う形へ正規化する (payment_link を links から拾う。未検証:
-        # Sandbox 疎通時に実レスポンスで rel 名を確認して合わせること)。
+        # 本体が使う形へ正規化する (payment_link を links から拾う)。
+        # 実測 (2026-10-30): 既知の rel 名では一致しなかったため、実応答の
+        # キーと rel 一覧を診断用に保持する (値そのものは秘密ではない)。
+        invoice["_top_keys"] = sorted(invoice.keys())
+        invoice["_link_rels"] = [link.get("rel", "")
+                                  for link in invoice.get("links", [])]
         if "payment_link" not in invoice:
             for link in invoice.get("links", []):
                 if link.get("rel") in ("payer-view", "payer_view"):
