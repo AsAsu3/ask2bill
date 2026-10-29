@@ -199,7 +199,7 @@ class ReceiptDesk:
 
         print("[ゲート] オーナー承認済み → 請求書を発行します")
 
-        # 5) 請求発行 (モック): Invoice 作成 → 送信 → 支払いリンク
+        # 5) 請求発行: Invoice 作成 → 送信 → 支払いリンク
         svc_entry = next((s for s in self.catalog["services"]
                           if s["name"] == service), None)
         unit_label = svc_entry["unit_label"] if svc_entry else service
@@ -208,7 +208,7 @@ class ReceiptDesk:
             customer_name=name, customer_contact=contact,
             items=[{"name": unit_label, "quantity": "1",
                     "unit_amount_jpy": amount}],
-            note=f"受付 {ticket} の見積承認後の請求 (モック)",
+            note=f"受付 {ticket} の見積承認後の請求",
         )
         self.paypal.send_invoice(invoice["id"])
         invoice = self.paypal.get_invoice(invoice["id"])
