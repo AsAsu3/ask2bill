@@ -216,7 +216,9 @@ def _receiptdesk(args, orders: bool = False) -> int:
         capture_output=True, text=True, env=env, timeout=120)
     print(proc.stdout)
     if proc.stderr:
-        print(f"[stderr] {proc.stderr[:500]}")
+        # トレースバックは末尾に例外の種類とメッセージが出るため、
+        # 先頭ではなく末尾を出す (先頭500字では原因が見えなかった)
+        print(f"[stderr] {proc.stderr[-8000:]}")
     print(f"receiptdesk.py 終了コード: {proc.returncode}")
     if orders:
         print("期待結果: 注文が実 Sandbox ID で発行され、承認リンクが台帳に残り、"

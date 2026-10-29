@@ -254,8 +254,8 @@ class SandboxPayPalAdapter(PayPalAdapter):
         invoice["_link_rels"] = [link.get("rel", "")
                                   for link in invoice.get("links", [])]
         if "payment_link" not in invoice:
-            web_base = self.base_url.replace("api.sandbox", "www.sandbox") \
-                                    .replace("api.", "www.", 1)
+            web_base = self.base.replace("api.sandbox", "www.sandbox") \
+                                .replace("api.", "www.", 1)
             invoice["payment_link"] = f"{web_base}/invoice/p/#{invoice['id']}"
         return invoice
 
