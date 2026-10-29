@@ -62,6 +62,10 @@ def _err_text(exc: Exception) -> str:
             return f"HTTP {exc.code} (本文は要約不可)"
         name = payload.get("name", "")
         message = payload.get("message", "")
+        if not name and not message:
+            # OAuth2 トークンエンドポイントは error / error_description 形式
+            name = payload.get("error", "")
+            message = payload.get("error_description", "")
         details = payload.get("details", [])
         detail = ""
         if details and isinstance(details, list):
@@ -92,6 +96,13 @@ def _guard() -> int:
 
 
 def _stage1(args) -> int:
+    _cid = os.environ.get("PAYPAL_SANDBOX_CLIENT_ID", "")
+    _csec = os.environ.get("PAYPAL_SANDBOX_CLIENT_SECRET", "")
+    print(f"[diag] client_id: len={len(_cid)} "
+          f"前後空白={'yes' if _cid != _cid.strip() else 'no'} / "
+          f"client_secret: len={len(_csec)} "
+          f"前後空白={'yes' if _csec != _csec.strip() else 'no'}"
+          " (長さと空白の有無のみ。値そのものは出力していない)")
     adapter = SandboxPayPalAdapter()
     try:
         order = adapter.create_order(args.amount, reference_id="receiptdesk-smoke")
