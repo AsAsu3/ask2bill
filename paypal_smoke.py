@@ -142,12 +142,12 @@ def _stage1(args) -> int:
         return 0
     def _invoice_flow() -> None:
         invoice = adapter.create_invoice(
-            invoicer_name="ReceiptDesk",
+            invoicer_name="Ask2Bill",
             customer_name=args.buyer_name,
             customer_contact=args.buyer_email,
             items=[{"name": "スモークテスト", "quantity": "1",
                     "unit_amount_jpy": args.amount}],
-            note="ReceiptDesk Sandbox smoke test",
+            note="Ask2Bill Sandbox smoke test",
         )
         print(f"[OK] Invoicing create: id={invoice.get('id')} status={invoice.get('status')}")
         adapter.send_invoice(invoice["id"])

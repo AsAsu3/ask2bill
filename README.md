@@ -1,4 +1,4 @@
-# デモ7: ReceiptDesk Agent (PayPal AI Hackathon 提出プロトタイプ)
+# デモ7: Ask2Bill (PayPal AI Hackathon 提出プロトタイプ)
 
 提出先: PayPal AI Hackathon (Devpost、締切 **2026-11-13 05:00 JST**、目標提出 11/10)。
 提出文ドラフト: `../deliverables/rank7-paypal-submission.md`

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PayPal アダプタ interface (デモ7 ReceiptDesk Agent)
+PayPal アダプタ interface (デモ7 Ask2Bill)
 
 receiptdesk.py 本体はこの interface だけに依存する。実装は2つ:
 

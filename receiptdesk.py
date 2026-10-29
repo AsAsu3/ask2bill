@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ReceiptDesk Agent (デモ7): 受付 → 分類 → 見積 → オーナー承認 → 請求 (モック) → 入金確認
+Ask2Bill (デモ7): 受付 → 分類 → 見積 → オーナー承認 → 請求 (モック) → 入金確認
 
 PayPal AI Hackathon (締切 2026-11-13 05:00 JST) への提出プロトタイプ。
 土台は Rank 2 の demo-bot (FAQ/受付) と demo2-pipeline (受付→分類→台帳→通知)。
@@ -14,6 +14,12 @@ PayPal AI Hackathon (締切 2026-11-13 05:00 JST) への提出プロトタイプ
     (Orders/Invoicing API v2、認証情報は環境変数、現在は未検証) が差し替え可能。
     切替は環境変数 RECEIPTDESK_PAYPAL_ADAPTER=mock|sandbox。
     ★モックは検証専用であり提出物ではない (要件: 実 Sandbox が中核)★
+  - 請求の発行方式は環境変数 RECEIPTDESK_ISSUE_MODE で選ぶ (既定 invoice)。
+    orders を指定すると、請求書 (Invoicing API) の代わりにチェックアウト注文
+    (Orders API v2) を発行して承認リンクを顧客へ渡す。Sandbox で Invoicing API
+    が 403 NOT_AUTHORIZED になる場合 (2026-10-30 の実スモークで確認) の
+    迂回路であり、承認ゲート・台帳・リマインドの流れは invoice 方式と同じ。
+    提出文の「invoice / checkout order」の記述はこの両方式に対応する。
   - 台帳 (invoices.csv) が唯一の真実。ステータス: DRAFT_ESTIMATE / AWAITING_OWNER /
     REJECTED_BY_OWNER / UNPAID / PAID / REMINDED。
 
@@ -31,6 +37,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timedelta, timezone
@@ -120,14 +127,31 @@ class Ledger:
         return None
 
 
-class ReceiptDesk:
+class Ask2Bill:
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.catalog = load_json(BASE_DIR / "catalog.json")
-        self.templates = load_json(BASE_DIR / "templates.json")
-        self.ledger = Ledger(self.data_dir / "invoices.csv")
         self.paypal = get_adapter()  # 既定 mock / 環境変数で sandbox に切替
+        self.templates = load_json(BASE_DIR / "templates.json")
+        if not self.paypal.is_mock:
+            # テンプレート文面はモック検証用に「モック」「デモのため実支払いなし」
+            # と書かれている。実 Sandbox でそのまま使うと虚偽の表示になるため、
+            # sandbox 選択時のみ Sandbox テスト用の文言に置き換える。
+            # モック経路の出力は一切変えない。
+            replacements = {
+                " (モック)": " (Sandbox テスト)",
+                "モック請求書": "請求書",
+                "※デモのため実支払いは発生しません。":
+                    "※Sandbox テストのため実資金の移動はありません。",
+            }
+            fixed = {}
+            for key, text in self.templates.items():
+                for old, new in replacements.items():
+                    text = text.replace(old, new)
+                fixed[key] = text
+            self.templates = fixed
+        self.ledger = Ledger(self.data_dir / "invoices.csv")
         self.seq_file = self.data_dir / "sequence.json"
         self._seq: dict[str, int] = {}
         if self.seq_file.exists():
@@ -199,44 +223,73 @@ class ReceiptDesk:
 
         print("[ゲート] オーナー承認済み → 請求書を発行します")
 
-        # 5) 請求発行: Invoice 作成 → 送信 → 支払いリンク
-        svc_entry = next((s for s in self.catalog["services"]
-                          if s["name"] == service), None)
-        unit_label = svc_entry["unit_label"] if svc_entry else service
-        invoice = self.paypal.create_invoice(
-            invoicer_name=self.catalog["invoicer_name"],
-            customer_name=name, customer_contact=contact,
-            items=[{"name": unit_label, "quantity": "1",
-                    "unit_amount_jpy": amount}],
-            note=f"受付 {ticket} の見積承認後の請求",
-        )
-        self.paypal.send_invoice(invoice["id"])
-        invoice = self.paypal.get_invoice(invoice["id"])
-        self.ledger.update(
-            ticket, 請求番号=invoice["id"], 支払いリンク=invoice["payment_link"],
-            ステータス="UNPAID")
-        ctx.update({"invoice_id": invoice["id"],
-                    "payment_link": invoice["payment_link"]})
+        # 5) 請求発行: invoice 方式 (既定) か orders 方式 (迂回路) か。
+        #    orders 方式では注文 ID を請求番号欄・PayPal注文ID欄の両方に記録し、
+        #    承認リンクを支払いリンクとして台帳に残す。金額・承認ゲート・
+        #    その後の UNPAID→PAID/REMINDED の流れは invoice 方式と同じ。
+        issue_mode = os.environ.get(
+            "RECEIPTDESK_ISSUE_MODE", "invoice").strip().lower()
+        if issue_mode not in ("invoice", "orders"):
+            print(f"[注意] 未知の RECEIPTDESK_ISSUE_MODE={issue_mode!r} のため "
+                  "invoice 方式で続行します。")
+            issue_mode = "invoice"
+        if issue_mode == "orders":
+            order = self.paypal.create_order(amount, reference_id=ticket)
+            approve_link = ""
+            for link in order.get("links", []) or []:
+                if link.get("rel") in ("approve", "payer-action"):
+                    approve_link = link.get("href", "")
+                    break
+            issue_id = order["id"]
+            self.ledger.update(
+                ticket, 請求番号=issue_id, PayPal注文ID=issue_id,
+                支払いリンク=approve_link, ステータス="UNPAID")
+        else:
+            svc_entry = next((s for s in self.catalog["services"]
+                              if s["name"] == service), None)
+            unit_label = svc_entry["unit_label"] if svc_entry else service
+            invoice = self.paypal.create_invoice(
+                invoicer_name=self.catalog["invoicer_name"],
+                customer_name=name, customer_contact=contact,
+                items=[{"name": unit_label, "quantity": "1",
+                        "unit_amount_jpy": amount}],
+                note=f"受付 {ticket} の見積承認後の請求",
+            )
+            self.paypal.send_invoice(invoice["id"])
+            invoice = self.paypal.get_invoice(invoice["id"])
+            issue_id = invoice["id"]
+            self.ledger.update(
+                ticket, 請求番号=issue_id,
+                支払いリンク=invoice["payment_link"],
+                ステータス="UNPAID")
+            approve_link = invoice["payment_link"]
+        ctx.update({"invoice_id": issue_id, "payment_link": approve_link})
         print("--- 顧客への請求案内 ---")
         print(self.templates["invoice_to_customer"].format(**ctx))
 
-        # 6) 入金確認: モックでは模擬 Webhook で PAID に遷移する。
-        #    Sandbox では支払者本人＋Webhook が確定経路のため、ここでは送金操作をしない。
+        # 6) 入金確認: モックでは模擬 Webhook / capture で PAID に遷移する。
+        #    Sandbox では支払者本人＋Webhook (invoice 方式) または承認＋capture
+        #    (orders 方式) が確定経路のため、ここでは送金操作をしない。
         if simulate_payment and not self.paypal.is_mock:
             print("[注意] Sandbox アダプタでは支払いシミュレーションは行いません。"
-                  "支払いは顧客がリンクで完了し、Webhook で台帳に反映されます。")
+                  "支払いは顧客がリンクで完了し、Webhook / capture で台帳に反映されます。")
         if simulate_payment and self.paypal.is_mock:
-            paid = self.paypal.settle_invoice(invoice["id"])
+            if issue_mode == "orders":
+                self.paypal.capture_order(issue_id)
+                paid_order_id = issue_id
+            else:
+                paid = self.paypal.settle_invoice(issue_id)
+                paid_order_id = paid["payment_detail"]["order_id"]
             self.ledger.update(
                 ticket, ステータス="PAID",
-                PayPal注文ID=paid["payment_detail"]["order_id"],
+                PayPal注文ID=paid_order_id,
                 支払完了日時=now_jst().isoformat(timespec="seconds"))
             print("--- オーナーへの通知 ---")
             print(self.templates["owner_paid_notification"].format(**ctx))
             print("--- 顧客への領収連絡 ---")
             print(self.templates["paid_receipt"].format(**ctx))
             return {"status": "paid", "ticket": ticket,
-                    "invoice_id": invoice["id"], "service": service,
+                    "invoice_id": issue_id, "service": service,
                     "amount": amount}
 
         # 7) 未払い: リマインド文を生成して台帳を REMINDED に
@@ -244,7 +297,7 @@ class ReceiptDesk:
         print(self.templates["unpaid_reminder"].format(**ctx))
         self.ledger.update(ticket, ステータス="REMINDED")
         return {"status": "unpaid_reminded", "ticket": ticket,
-                "invoice_id": invoice["id"], "service": service,
+                "invoice_id": issue_id, "service": service,
                 "amount": amount}
 
 
@@ -282,10 +335,10 @@ def _reset_dir(path: Path) -> None:
 def run_demo() -> int:
     data_dir = BASE_DIR / "demo_data"
     _reset_dir(data_dir)
-    desk = ReceiptDesk(data_dir)
+    desk = Ask2Bill(data_dir)
 
     print("=" * 64)
-    print("デモ7 ReceiptDesk Agent: 受付 → 見積 → 承認 → 請求 → 入金確認")
+    print("デモ7 Ask2Bill: 受付 → 見積 → 承認 → 請求 → 入金確認")
     print(f"※ PayPal アダプタ: {desk.paypal.name}"
           + (" (検証用モック。実送金・実APIコールは行いません)"
              if desk.paypal.is_mock else " (実 Sandbox)"))
@@ -308,6 +361,14 @@ def run_demo() -> int:
     r_paid = by_ticket[results[0]["ticket"]]
     r_rej = by_ticket[results[1]["ticket"]]
     r_unpaid = by_ticket[results[2]["ticket"]]
+    # --demo は既定で invoice 方式。orders 方式で実行した場合は、支払いイベントの
+    # 期待形が capture のみになる (請求書イベントは発生しない)。
+    demo_issue_mode = os.environ.get(
+        "RECEIPTDESK_ISSUE_MODE", "invoice").strip().lower()
+    # orders 方式では請求書イベントが発生しないため、期待するイベント表示を変える。
+    event_label = ("モック Webhook イベントが記録された (PAYMENT.CAPTURE"
+                   + (" / INVOICE.PAID)" if demo_issue_mode != "orders"
+                      else ")"))
 
     checks = [
         ("シナリオ1: 承認→請求→入金で PAID になった",
@@ -329,9 +390,11 @@ def run_demo() -> int:
          r_unpaid["優先度"] == "高"),
         ("台帳は3件のみ (重複・余分な請求なし)",
          len(rows) == 3),
-        ("モック Webhook イベントが記録された (PAYMENT.CAPTURE / INVOICE.PAID)",
+        (event_label,
          any("CAPTURE" in e["event_type"] for e in desk.paypal.events)
-         and any("INVOICE.PAID" in e["event_type"] for e in desk.paypal.events)),
+         and (demo_issue_mode == "orders"
+              or any("INVOICE.PAID" in e["event_type"]
+                     for e in desk.paypal.events))),
     ]
     all_ok = True
     for label, ok in checks:
@@ -342,7 +405,7 @@ def run_demo() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="ReceiptDesk Agent (デモ7)")
+    parser = argparse.ArgumentParser(description="Ask2Bill (デモ7)")
     parser.add_argument("--demo", action="store_true", help="3シナリオを一気通貫で実演")
     parser.add_argument("--data-dir", default="data", help="実行データの置き場所")
     args = parser.parse_args()
@@ -350,7 +413,7 @@ def main() -> int:
     if args.demo:
         return run_demo()
 
-    desk = ReceiptDesk(BASE_DIR / args.data_dir)
+    desk = Ask2Bill(BASE_DIR / args.data_dir)
     lines = [ln for ln in sys.stdin.read().splitlines() if ln.strip()]
     if not lines:
         print("標準入力から JSON を1行1件で入力してください (例は README.md)。")

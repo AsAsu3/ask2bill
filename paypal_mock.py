@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PayPal モックアダプタ (デモ7 ReceiptDesk Agent 用)
+PayPal モックアダプタ (デモ7 Ask2Bill 用)
 
 ★これはモックです。実 PayPal への接続・実 API コール・認証情報は一切ありません。★
 
