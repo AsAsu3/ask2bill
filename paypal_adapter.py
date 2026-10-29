@@ -244,15 +244,16 @@ class SandboxPayPalAdapter(PayPalAdapter):
     def get_invoice(self, invoice_id):
         invoice = self._invoice_request(
             "GET", f"/v2/invoicing/invoices/{invoice_id}")
-        # 本体が使う形へ正規化する (payment_link を links から拾う)。
-        # 実測 (2026-10-30): 既知の rel 名では一致しなかったため、実応答の
-        # キーと rel 一覧を診断用に保持する (値そのものは秘密ではない)。
+        # 本体が使う形へ正規化する。実測 (2026-10-30): 応答 links の rel は
+        # self / replace / cancel / remind / record-payment / qr-code のみで、
+        # 支払者向けリンクは qr-code の href (支払いページ URL そのもの) が
+        # 担う。payment_link にはそれを使う。
         invoice["_top_keys"] = sorted(invoice.keys())
         invoice["_link_rels"] = [link.get("rel", "")
                                   for link in invoice.get("links", [])]
         if "payment_link" not in invoice:
             for link in invoice.get("links", []):
-                if link.get("rel") in ("payer-view", "payer_view"):
+                if link.get("rel") in ("payer-view", "payer_view", "qr-code"):
                     invoice["payment_link"] = link.get("href", "")
                     break
             invoice.setdefault("payment_link", "")
