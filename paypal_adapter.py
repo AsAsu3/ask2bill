@@ -254,8 +254,10 @@ class SandboxPayPalAdapter(PayPalAdapter):
         invoice["_link_rels"] = [link.get("rel", "")
                                   for link in invoice.get("links", [])]
         if "payment_link" not in invoice:
-            web_base = self.base.replace("api.sandbox", "www.sandbox") \
-                                .replace("api.", "www.", 1)
+            # API ホストは api / api-m の揺れがあるため文字列置換では
+            # 導かず、環境で振り分ける (スタブ検証で置換漏れを実測)
+            web_base = ("https://www.sandbox.paypal.com"
+                        if "sandbox" in self.base else "https://www.paypal.com")
             invoice["payment_link"] = f"{web_base}/invoice/p/#{invoice['id']}"
         return invoice
 
