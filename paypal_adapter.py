@@ -40,6 +40,7 @@ import urllib.request
 from paypal_mock import PayPalMockClient
 
 SANDBOX_BASE = "https://api-m.sandbox.paypal.com"
+INVOICING_SCOPE = "https://uri.paypal.com/services/invoicing"
 
 
 class PayPalAdapter:
@@ -119,6 +120,8 @@ class SandboxPayPalAdapter(PayPalAdapter):
         self.base = os.environ.get("PAYPAL_SANDBOX_BASE", SANDBOX_BASE)
         self._token: str | None = None
         self.token_scope: str = ""
+        self._invoice_token: str | None = None
+        self.invoice_token_scope: str = ""
         self.events: list = []
 
     # -- REST 基盤 -------------------------------------------------------------
@@ -157,15 +160,34 @@ class SandboxPayPalAdapter(PayPalAdapter):
         self._token, self.token_scope = self._fetch_token()
         return self._token
 
-    def _request(self, method: str, path: str, body: dict | None = None) -> dict:
+    def _request_full(self, method: str, path: str,
+                      body: dict | None = None,
+                      token: str | None = None) -> tuple[dict, dict]:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(
             f"{self.base}{path}", data=data, method=method,
-            headers={"Authorization": f"Bearer {self._access_token()}",
+            headers={"Authorization": f"Bearer {token or self._access_token()}",
                      "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read()
-            return json.loads(raw) if raw else {}
+            headers = dict(resp.headers.items())
+            return (json.loads(raw) if raw else {}), headers
+
+    def _request(self, method: str, path: str, body: dict | None = None) -> dict:
+        return self._request_full(method, path, body)[0]
+
+    # Invoicing は既定トークンに scope が付与されない (実測 2026-10-30) ため、
+    # invoicing scope を明示要求した専用トークンで呼ぶ。
+    def _invoice_access_token(self) -> str:
+        if not self._invoice_token:
+            self._invoice_token, self.invoice_token_scope = \
+                self._fetch_token(INVOICING_SCOPE)
+        return self._invoice_token
+
+    def _invoice_request(self, method: str, path: str,
+                         body: dict | None = None) -> dict:
+        return self._request_full(
+            method, path, body, token=self._invoice_access_token())[0]
 
     # -- Orders API v2 ----------------------------------------------------------
     def create_order(self, amount_jpy, currency="JPY", reference_id=""):
@@ -184,29 +206,44 @@ class SandboxPayPalAdapter(PayPalAdapter):
     # -- Invoicing API v2 --------------------------------------------------------
     def create_invoice(self, *, invoicer_name, customer_name, customer_contact,
                        items, note=""):
-        return self._request("POST", "/v2/invoicing/invoices", {
-            "detail": {"currency_code": "JPY", "note": note},
-            "invoicer": {"name": {"given_name": invoicer_name}},
-            "primary_recipients": [{
-                "billing_info": {
-                    "name": {"given_name": customer_name},
-                    "email_address": customer_contact,
-                }}],
-            "items": [{
-                "name": i["name"],
-                "quantity": str(i.get("quantity", "1")),
-                "unit_amount": {"currency_code": "JPY",
-                                "value": str(i["unit_amount_jpy"])},
-            } for i in items],
-        })
+        payload, headers = self._request_full(
+            "POST", "/v2/invoicing/invoices", {
+                "detail": {"currency_code": "JPY", "note": note},
+                "invoicer": {"name": {"given_name": invoicer_name}},
+                "primary_recipients": [{
+                    "billing_info": {
+                        "name": {"given_name": customer_name},
+                        "email_address": customer_contact,
+                    }}],
+                "items": [{
+                    "name": i["name"],
+                    "quantity": str(i.get("quantity", "1")),
+                    "unit_amount": {"currency_code": "JPY",
+                                    "value": str(i["unit_amount_jpy"])},
+                } for i in items],
+            }, token=self._invoice_access_token())
+        # 実応答は id を含まず、href / Location ヘッダで所在を示す (実測
+        # 2026-10-30)。ID を取り出して作成直後の実状態を正規化して返す。
+        invoice_id = payload.get("id")
+        if not invoice_id and payload.get("href"):
+            invoice_id = payload["href"].rstrip("/").split("/")[-1]
+        if not invoice_id:
+            loc = headers.get("Location") or headers.get("location") or ""
+            if loc:
+                invoice_id = loc.rstrip("/").split("/")[-1]
+        if not invoice_id:
+            raise RuntimeError(
+                "Invoicing create の応答から請求書 ID を特定できませんでした")
+        return self.get_invoice(invoice_id)
 
     def send_invoice(self, invoice_id):
-        return self._request(
+        return self._invoice_request(
             "POST", f"/v2/invoicing/invoices/{invoice_id}/send",
             {"send_to_invoicer": True, "send_to_recipient": True})
 
     def get_invoice(self, invoice_id):
-        invoice = self._request("GET", f"/v2/invoicing/invoices/{invoice_id}")
+        invoice = self._invoice_request(
+            "GET", f"/v2/invoicing/invoices/{invoice_id}")
         # 本体が使う形へ正規化する (payment_link を links から拾う。未検証:
         # Sandbox 疎通時に実レスポンスで rel 名を確認して合わせること)。
         if "payment_link" not in invoice:

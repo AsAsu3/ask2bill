@@ -30,6 +30,14 @@
     python3 paypal_smoke.py --receiptdesk \\
       --buyer-email <Sandbox買い手アカウントのメール>
 
+  # 4') Invoicing API が 403 の場合の迂回路: Orders 方式で receiptdesk.py を流す
+  #    (請求書の代わりにチェックアウト注文を発行し、承認リンクを台帳に残す。
+  #     支払いの確定は買い手の承認 + --capture 経路)
+  PAYPAL_SANDBOX_CLIENT_ID=... PAYPAL_SANDBOX_CLIENT_SECRET=... \
+  RECEIPTDESK_PAYPAL_ADAPTER=sandbox \
+    python3 paypal_smoke.py --receiptdesk-orders \\
+      --buyer-email <Sandbox買い手アカウントのメール>
+
 出力するもの: 各ステップの成否、Sandbox の注文ID・請求書ID・
 ステータス、承認リンク/支払いリンクの有無のみ。アクセストークン、
 Client ID / Secret、Authorization ヘッダ、承認リンクのクエリ
@@ -112,6 +120,11 @@ def _stage1(args) -> int:
         return 1
     print(f"[diag] token scope (既定): {adapter.token_scope}")
     try:
+        adapter._invoice_access_token()
+        print(f"[diag] token scope (invoicing専用): {adapter.invoice_token_scope}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[diag] invoicing専用トークン取得に失敗: {_err_text(exc)}")
+    try:
         order = adapter.create_order(args.amount, reference_id="receiptdesk-smoke")
     except Exception as exc:  # noqa: BLE001 - 要約して出すため
         print(f"[NG] OAuth/Orders create: {_err_text(exc)}")
@@ -146,23 +159,9 @@ def _stage1(args) -> int:
     try:
         _invoice_flow()
     except Exception as exc:  # noqa: BLE001
-        err = _err_text(exc)
-        print(f"[NG] Invoicing (既定トークン): {err}")
-        if "403" not in err:
-            print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
-            return 1
-        print("[retry] scope=https://uri.paypal.com/services/invoicing を"
-              "明示要求したトークンで再試行")
-        try:
-            scoped_token, granted = adapter._fetch_token(
-                "https://uri.paypal.com/services/invoicing")
-            print(f"[diag] token scope (明示要求): {granted}")
-            adapter._token = scoped_token
-            _invoice_flow()
-        except Exception as exc2:  # noqa: BLE001
-            print(f"[NG] Invoicing (明示 scope トークン): {_err_text(exc2)}")
-            print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
-            return 1
+        print(f"[NG] Invoicing: {_err_text(exc)}")
+        print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
+        return 1
     print("RESULT: PASS (stage1: OAuth + Orders + Invoicing)")
     return 0
 
@@ -193,7 +192,7 @@ def _check_invoice(args) -> int:
     return 0 if got.get("status") == "PAID" else 1
 
 
-def _receiptdesk(args) -> int:
+def _receiptdesk(args, orders: bool = False) -> int:
     if not args.buyer_email:
         print("[NG] --receiptdesk には --buyer-email が必須 (Sandbox 買い手アカウント)")
         return 2
@@ -205,6 +204,8 @@ def _receiptdesk(args) -> int:
     }
     env = dict(os.environ)
     env["RECEIPTDESK_PAYPAL_ADAPTER"] = "sandbox"
+    if orders:
+        env["RECEIPTDESK_ISSUE_MODE"] = "orders"
     here = os.path.dirname(os.path.abspath(__file__))
     proc = subprocess.run(
         [sys.executable, os.path.join(here, "receiptdesk.py"),
@@ -215,8 +216,12 @@ def _receiptdesk(args) -> int:
     if proc.stderr:
         print(f"[stderr] {proc.stderr[:500]}")
     print(f"receiptdesk.py 終了コード: {proc.returncode}")
-    print("期待結果: 請求書が実 Sandbox ID で発行され、台帳は UNPAID→REMINDED。"
-          "Sandbox では支払いシミュレーションは行わないため PAID にはならない。")
+    if orders:
+        print("期待結果: 注文が実 Sandbox ID で発行され、承認リンクが台帳に残り、"
+              "台帳は UNPAID→REMINDED。支払いの確定は買い手の承認 + --capture。")
+    else:
+        print("期待結果: 請求書が実 Sandbox ID で発行され、台帳は UNPAID→REMINDED。"
+              "Sandbox では支払いシミュレーションは行わないため PAID にはならない。")
     return proc.returncode
 
 
@@ -227,6 +232,8 @@ def main() -> int:
     parser.add_argument("--capture", metavar="ORDER_ID")
     parser.add_argument("--check-invoice", metavar="INVOICE_ID")
     parser.add_argument("--receiptdesk", action="store_true")
+    parser.add_argument("--receiptdesk-orders", action="store_true",
+                        help="receiptdesk.py を Orders 発行方式で流す (Invoicing 403 時の迂回路)")
     parser.add_argument("--amount", type=int, default=1000)
     parser.add_argument("--buyer-email", default="")
     parser.add_argument("--buyer-name", default="テスト")
@@ -241,6 +248,8 @@ def main() -> int:
         return _check_invoice(args)
     if args.receiptdesk:
         return _receiptdesk(args)
+    if args.receiptdesk_orders:
+        return _receiptdesk(args, orders=True)
     parser.print_help()
     return 2
 
