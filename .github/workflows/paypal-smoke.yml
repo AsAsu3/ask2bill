@@ -1,0 +1,59 @@
+name: PayPal Sandbox Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Smoke stage to run"
+        type: choice
+        options:
+          - guard
+          - stage1
+          - capture
+          - check-invoice
+          - receiptdesk
+        default: stage1
+      order_id:
+        description: "Order ID (capture stage)"
+        type: string
+        required: false
+        default: ""
+      invoice_id:
+        description: "Invoice ID (check-invoice stage)"
+        type: string
+        required: false
+        default: ""
+      buyer_email:
+        description: "Sandbox buyer account email"
+        type: string
+        required: false
+        default: "sb-dp3fq53535503@personal.example.com"
+      amount:
+        description: "Amount in JPY"
+        type: string
+        required: false
+        default: "1000"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run paypal_smoke.py
+        env:
+          PAYPAL_SANDBOX_CLIENT_ID: ${{ secrets.PAYPAL_SANDBOX_CLIENT_ID }}
+          PAYPAL_SANDBOX_CLIENT_SECRET: ${{ secrets.PAYPAL_SANDBOX_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          args=()
+          case "${{ inputs.stage }}" in
+            guard) args+=(--guard) ;;
+            stage1) args+=(--stage1 --amount "${{ inputs.amount }}" --buyer-email "${{ inputs.buyer_email }}") ;;
+            capture) args+=(--capture "${{ inputs.order_id }}") ;;
+            check-invoice) args+=(--check-invoice "${{ inputs.invoice_id }}") ;;
+            receiptdesk) args+=(--receiptdesk --buyer-email "${{ inputs.buyer_email }}") ;;
+          esac
+          python3 paypal_smoke.py "${args[@]}"
