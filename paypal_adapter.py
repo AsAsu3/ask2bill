@@ -245,18 +245,18 @@ class SandboxPayPalAdapter(PayPalAdapter):
         invoice = self._invoice_request(
             "GET", f"/v2/invoicing/invoices/{invoice_id}")
         # 本体が使う形へ正規化する。実測 (2026-10-30): 応答 links の rel は
-        # self / replace / cancel / remind / record-payment / qr-code のみで、
-        # 支払者向けリンクは qr-code の href (支払いページ URL そのもの) が
-        # 担う。payment_link にはそれを使う。
+        # self / replace / cancel / remind / record-payment / qr-code のみ。
+        # qr-code の href は QR 画像を返す API エンドポイントであり、
+        # 顧客が開く支払いページではない (ラン #11 で実物を確認)。
+        # 支払いページは PayPal の標準 URL 形式 /invoice/p/#<ID> を
+        # API ベースから導いたウェブホストで組み立てる。
         invoice["_top_keys"] = sorted(invoice.keys())
         invoice["_link_rels"] = [link.get("rel", "")
                                   for link in invoice.get("links", [])]
         if "payment_link" not in invoice:
-            for link in invoice.get("links", []):
-                if link.get("rel") in ("payer-view", "payer_view", "qr-code"):
-                    invoice["payment_link"] = link.get("href", "")
-                    break
-            invoice.setdefault("payment_link", "")
+            web_base = self.base_url.replace("api.sandbox", "www.sandbox") \
+                                    .replace("api.", "www.", 1)
+            invoice["payment_link"] = f"{web_base}/invoice/p/#{invoice['id']}"
         return invoice
 
     def settle_invoice(self, invoice_id):
