@@ -34,6 +34,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import urllib.parse
 import urllib.request
 
 from paypal_mock import PayPalMockClient
@@ -117,6 +118,7 @@ class SandboxPayPalAdapter(PayPalAdapter):
         self.client_secret = os.environ.get("PAYPAL_SANDBOX_CLIENT_SECRET", "")
         self.base = os.environ.get("PAYPAL_SANDBOX_BASE", SANDBOX_BASE)
         self._token: str | None = None
+        self.token_scope: str = ""
         self.events: list = []
 
     # -- REST 基盤 -------------------------------------------------------------
@@ -127,20 +129,32 @@ class SandboxPayPalAdapter(PayPalAdapter):
                 "(PAYPAL_SANDBOX_CLIENT_ID / PAYPAL_SANDBOX_CLIENT_SECRET)。"
                 "rank7-paypal-submission.md §5 の登録手順で発行してください。")
 
-    def _access_token(self) -> str:
+    def _fetch_token(self, scope: str | None = None) -> tuple[str, str]:
+        """トークンを新規取得し (トークン, 付与された scope 文字列) を返す。
+
+        scope 文字列は能力の識別子であり秘密ではない (診断出力可)。
+        トークン値そのものは呼び出し側でも出力しないこと。
+        """
         self._require_credentials()
-        if self._token:
-            return self._token
         basic = base64.b64encode(
             f"{self.client_id}:{self.client_secret}".encode()).decode()
+        body = "grant_type=client_credentials"
+        if scope:
+            body += "&scope=" + urllib.parse.quote(scope, safe="")
         req = urllib.request.Request(
             f"{self.base}/v1/oauth2/token",
-            data=b"grant_type=client_credentials",
+            data=body.encode(),
             headers={"Authorization": f"Basic {basic}",
                      "Content-Type": "application/x-www-form-urlencoded"},
             method="POST")
         with urllib.request.urlopen(req, timeout=30) as resp:
-            self._token = json.loads(resp.read())["access_token"]
+            payload = json.loads(resp.read())
+        return payload["access_token"], payload.get("scope", "")
+
+    def _access_token(self) -> str:
+        if self._token:
+            return self._token
+        self._token, self.token_scope = self._fetch_token()
         return self._token
 
     def _request(self, method: str, path: str, body: dict | None = None) -> dict:

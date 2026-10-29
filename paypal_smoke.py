@@ -105,6 +105,13 @@ def _stage1(args) -> int:
           " (長さと空白の有無のみ。値そのものは出力していない)")
     adapter = SandboxPayPalAdapter()
     try:
+        adapter._access_token()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[NG] OAuth トークン取得: {_err_text(exc)}")
+        print("RESULT: FAIL")
+        return 1
+    print(f"[diag] token scope (既定): {adapter.token_scope}")
+    try:
         order = adapter.create_order(args.amount, reference_id="receiptdesk-smoke")
     except Exception as exc:  # noqa: BLE001 - 要約して出すため
         print(f"[NG] OAuth/Orders create: {_err_text(exc)}")
@@ -120,7 +127,7 @@ def _stage1(args) -> int:
         print("[SKIP] Invoicing: --buyer-email 未指定のため請求書ステップは省略")
         print("RESULT: PARTIAL-OK (Orders まで成功)")
         return 0
-    try:
+    def _invoice_flow() -> None:
         invoice = adapter.create_invoice(
             invoicer_name="ReceiptDesk",
             customer_name=args.buyer_name,
@@ -135,10 +142,27 @@ def _stage1(args) -> int:
         got = adapter.get_invoice(invoice["id"])
         print(f"[OK] Invoicing get: id={got.get('id')} status={got.get('status')} "
               f"payment_link 有無: {'yes' if got.get('payment_link') else 'no'}")
+
+    try:
+        _invoice_flow()
     except Exception as exc:  # noqa: BLE001
-        print(f"[NG] Invoicing: {_err_text(exc)}")
-        print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
-        return 1
+        err = _err_text(exc)
+        print(f"[NG] Invoicing (既定トークン): {err}")
+        if "403" not in err:
+            print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
+            return 1
+        print("[retry] scope=https://uri.paypal.com/services/invoicing を"
+              "明示要求したトークンで再試行")
+        try:
+            scoped_token, granted = adapter._fetch_token(
+                "https://uri.paypal.com/services/invoicing")
+            print(f"[diag] token scope (明示要求): {granted}")
+            adapter._token = scoped_token
+            _invoice_flow()
+        except Exception as exc2:  # noqa: BLE001
+            print(f"[NG] Invoicing (明示 scope トークン): {_err_text(exc2)}")
+            print("RESULT: PARTIAL-OK (Orders 成功 / Invoicing 失敗)")
+            return 1
     print("RESULT: PASS (stage1: OAuth + Orders + Invoicing)")
     return 0
 
