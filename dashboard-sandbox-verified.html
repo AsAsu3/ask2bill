@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Ask2Bill — 請求台帳ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 24px; }
+  #grid { height: 480px; width: 100%; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; font-size: 14px; }
+  .note { color: #555; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Ask2Bill — 請求台帳</h1>
+<p class="note">行数: 3 件。台帳 (invoices.csv) のスナップショット。
+AG Grid が読み込めない場合は下の素の表で同じ内容を表示する。</p>
+<div id="grid" class="ag-theme-alpine"></div>
+<table id="fallback"><thead><tr><th>受付番号</th><th>受付日時</th><th>顧客名</th><th>サービス</th><th>優先度</th><th>見積金額</th><th>請求番号</th><th>PayPal注文ID</th><th>支払いリンク</th><th>ステータス</th><th>支払完了日時</th></tr></thead>
+<tbody><tr><td></td><td></td><td></td><td></td><td></td><td>1000</td><td>INV2-LN49-YAKR-77PE-ZMJM</td><td></td><td>https://www.sandbox.paypal.com/invoice/p/#INV2-LN49-YAKR-77PE-ZMJM</td><td>PAID</td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td>150000</td><td>INV2-EATX-MR4C-TDF9-7CUD</td><td></td><td>https://www.sandbox.paypal.com/invoice/p/#INV2-EATX-MR4C-TDF9-7CUD</td><td>SENT</td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>20V19863D4727870H</td><td></td><td>COMPLETED</td><td></td></tr></tbody></table>
+<script>
+const rowData = [{"受付番号": "", "受付日時": "", "顧客名": "", "サービス": "", "優先度": "", "見積金額": "1000", "請求番号": "INV2-LN49-YAKR-77PE-ZMJM", "PayPal注文ID": "", "支払いリンク": "https://www.sandbox.paypal.com/invoice/p/#INV2-LN49-YAKR-77PE-ZMJM", "ステータス": "PAID", "支払完了日時": ""}, {"受付番号": "", "受付日時": "", "顧客名": "", "サービス": "", "優先度": "", "見積金額": "150000", "請求番号": "INV2-EATX-MR4C-TDF9-7CUD", "PayPal注文ID": "", "支払いリンク": "https://www.sandbox.paypal.com/invoice/p/#INV2-EATX-MR4C-TDF9-7CUD", "ステータス": "SENT", "支払完了日時": ""}, {"受付番号": "", "受付日時": "", "顧客名": "", "サービス": "", "優先度": "", "見積金額": "", "請求番号": "", "PayPal注文ID": "20V19863D4727870H", "支払いリンク": "", "ステータス": "COMPLETED", "支払完了日時": ""}];
+const columnDefs = [{"field": "受付番号", "headerName": "受付番号", "filter": true, "sortable": true, "resizable": true}, {"field": "受付日時", "headerName": "受付日時", "filter": true, "sortable": true, "resizable": true}, {"field": "顧客名", "headerName": "顧客名", "filter": true, "sortable": true, "resizable": true}, {"field": "サービス", "headerName": "サービス", "filter": true, "sortable": true, "resizable": true}, {"field": "優先度", "headerName": "優先度", "filter": true, "sortable": true, "resizable": true}, {"field": "見積金額", "headerName": "見積金額", "filter": true, "sortable": true, "resizable": true}, {"field": "請求番号", "headerName": "請求番号", "filter": true, "sortable": true, "resizable": true}, {"field": "PayPal注文ID", "headerName": "PayPal注文ID", "filter": true, "sortable": true, "resizable": true}, {"field": "支払いリンク", "headerName": "支払いリンク", "filter": true, "sortable": true, "resizable": true}, {"field": "ステータス", "headerName": "ステータス", "filter": true, "sortable": true, "resizable": true}, {"field": "支払完了日時", "headerName": "支払完了日時", "filter": true, "sortable": true, "resizable": true}];
+if (window.agGrid) {
+  document.getElementById('fallback').style.display = 'none';
+  agGrid.createGrid(document.getElementById('grid'),
+    { rowData: rowData, columnDefs: columnDefs, defaultColDef: { filter: true } });
+} else {
+  document.getElementById('grid').innerHTML =
+    '<p class="note">AG Grid の CDN が読み込めなかったため、下の表を表示しています。</p>';
+}
+</script>
+</body>
+</html>

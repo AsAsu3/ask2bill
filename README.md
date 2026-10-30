@@ -23,8 +23,9 @@
   Invoicing API v2 の作成/送信/取得を REST (標準ライブラリ urllib) で実装済み。
   認証情報は環境変数 `PAYPAL_SANDBOX_CLIENT_ID` / `PAYPAL_SANDBOX_CLIENT_SECRET`
   からのみ読む。**Sandbox アプリと認証情報は発行済み（認証情報は公開しない）。
-  実接続スモークテストは実施準備中** — 登録手順と
-  疎通スモークのチェックリストは `../deliverables/rank7-paypal-submission.md` §5。
+  実接続スモークテストは 2026-10-30 に検証済み** (注文の承認→capture で
+  COMPLETED、請求書の支払い→PAID まで API 側で確認) — 詳細は
+  `../deliverables/rank7-paypal-submission.md` §9。
 - 切替は環境変数 `RECEIPTDESK_PAYPAL_ADAPTER=mock|sandbox` のみ。本体の変更は不要。
   認証情報が無い状態で sandbox を呼ぶと、ネットワークに出る前に明示エラーで止まる
   (確認済み)。
@@ -65,9 +66,13 @@ demo7-receiptdesk/
 ├── receiptdesk.py   # 本体: 受付→分類→見積→承認ゲート→請求→入金確認
 ├── paypal_adapter.py # PayPal interface + Mock / Sandbox の2実装 (切替は環境変数)
 ├── paypal_mock.py   # モックの実体 (Orders / Invoicing / Webhook の形を模す)
+├── webhook_server.py # Webhook 受信: PAYMENT.CAPTURE.COMPLETED / INVOICE.PAID で台帳を PAID 化 (冪等つき、`--selftest` あり)
+├── build_dashboard.py # 台帳から AG Grid ダッシュボードを生成
+├── dashboard-sandbox-verified.html # 生成物 (検証済み Sandbox 実績のみの台帳から生成した提出用ダッシュボード)
 ├── catalog.json     # サービスカタログ (基本価格・分類キーワード・優先度キーワード)
 ├── templates.json   # 見積案内・承認依頼・請求案内・領収・リマインドの文面
 ├── demo_data/       # --demo の実行データ (invoices.csv / sequence.json)
+├── demo_data_sandbox_verified/ # 検証済み Sandbox 実績のみの台帳 (検証記録からの編纂物。ライブ API エクスポートではない)
 └── README.md
 ```
 
@@ -104,9 +109,9 @@ demo7-receiptdesk/
 | 受付→分類→見積→承認ゲート→台帳→通知の全フロー | ✅ 検証済み (`--demo` ALL OK) |
 | モックアダプタでの請求・入金・Webhook イベント | ✅ 検証済み (同上) |
 | アダプタ interface 分離・環境変数での切替 | ✅ 検証済み (sandbox 選択・認証情報なしガードを確認) |
-| Sandbox の OAuth / Orders create・capture / Invoicing 送信 | ⏳ コード実装済み・**未検証** (認証情報の発行待ち、§5 の手順で実施) |
-| Webhook 受信エンドポイント (台帳への自動反映) | ⏳ 未実装 (公開 URL が必要。提出工程 W2 で実装) |
-| AG Grid ダッシュボード | ⏳ 未実装 (現状は CSV 台帳 + コンソール表示。W2 で実装) |
+| Sandbox の OAuth / Orders create・capture / Invoicing 送信 | ✅ 検証済み (2026-10-30、GitHub Actions 経由。注文の承認→capture で COMPLETED、請求書の支払い→PAID まで API 側で確認。詳細は deliverables/rank7-paypal-submission.md §9) |
+| Webhook 受信エンドポイント (台帳への自動反映) | ✅ 実装済み・ローカル検証済み (`webhook_server.py --selftest` ALL OK。公開 URL デプロイと署名検証は未実施のため、そのまま公開してはいけない) |
+| AG Grid ダッシュボード | ✅ 実装済み・ローカル検証済み (`build_dashboard.py` で台帳から生成。提出用は検証済み Sandbox 実績のみの `dashboard-sandbox-verified.html`) |
 
 ## 制限事項 (プロトタイプの範囲)
 - 分類はキーワード方式 (demo2 と同じ)。提出版では LLM 分類への差し替えが可能だが、

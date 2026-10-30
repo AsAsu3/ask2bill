@@ -11,7 +11,8 @@ PayPal AI Hackathon (締切 2026-11-13 05:00 JST) への提出プロトタイプ
     (owner_decision = approve が無い限り、請求書は絶対に発行されない)。
   - 決済は paypal_adapter の interface 経由のみ。本体は実装を知らない。
     検証用 MockPayPalAdapter (--demo の既定) と実 Sandbox 用 SandboxPayPalAdapter
-    (Orders/Invoicing API v2、認証情報は環境変数、現在は未検証) が差し替え可能。
+    (Orders/Invoicing API v2、認証情報は環境変数、2026-10-30 に実疎通を検証済み)
+    が差し替え可能。
     切替は環境変数 RECEIPTDESK_PAYPAL_ADAPTER=mock|sandbox。
     ★モックは検証専用であり提出物ではない (要件: 実 Sandbox が中核)★
   - 請求の発行方式は環境変数 RECEIPTDESK_ISSUE_MODE で選ぶ (既定 invoice)。

@@ -1,0 +1,4 @@
+受付番号,受付日時,顧客名,連絡先,サービス,優先度,見積金額,請求番号,PayPal注文ID,支払いリンク,ステータス,支払完了日時
+,,,,,,1000,INV2-LN49-YAKR-77PE-ZMJM,,https://www.sandbox.paypal.com/invoice/p/#INV2-LN49-YAKR-77PE-ZMJM,PAID,
+,,,,,,150000,INV2-EATX-MR4C-TDF9-7CUD,,https://www.sandbox.paypal.com/invoice/p/#INV2-EATX-MR4C-TDF9-7CUD,SENT,
+,,,,,,,,20V19863D4727870H,,COMPLETED,

@@ -12,8 +12,9 @@ receiptdesk.py 本体はこの interface だけに依存する。実装は2つ:
                            Orders API v2 / Invoicing API v2 の REST を標準ライブラリ
                            (urllib) で叩く。認証情報は環境変数からのみ読む:
                              PAYPAL_SANDBOX_CLIENT_ID / PAYPAL_SANDBOX_CLIENT_SECRET
-                           ★現時点では認証情報が無いため未検証★。認証情報が揃ったら
-                           rank7-paypal-submission.md §5 のスモーク手順で検証する。
+                           2026-10-30 に実 Sandbox で検証済み (注文 COMPLETED・
+                           請求書 PAID まで API 側で確認。詳細は
+                           rank7-paypal-submission.md §9)。
 
 切替: 環境変数 RECEIPTDESK_PAYPAL_ADAPTER=mock|sandbox (既定 mock)。
 
@@ -105,7 +106,7 @@ class MockPayPalAdapter(PayPalAdapter):
 
 
 class SandboxPayPalAdapter(PayPalAdapter):
-    """実 Sandbox 用 (未検証: 認証情報の発行待ち)。
+    """実 Sandbox 用 (2026-10-30 に実疎通を検証済み)。
 
     認証情報は環境変数からのみ読む。コード・台帳・ログに秘密を書かないこと。
     ネットワーク呼び出しはメソッド実行時にのみ行う (import/初期化では行わない)。
